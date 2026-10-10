@@ -1,0 +1,46 @@
+name: stock-monitor
+
+on:
+  schedule:
+    - cron: "37 13 * * *"
+  workflow_dispatch:
+    inputs:
+      force_in_stock:
+        description: "DEBUG: comma-separated SKUs to force in_stock"
+        required: false
+        default: ""
+      alert_skus:
+        description: "Override ALERT_SKUS secret"
+        required: false
+        default: ""
+      product_urls:
+        description: "Override PRODUCT_URLS secret"
+        required: false
+        default: ""
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: playwright install --with-deps chromium
+      - name: Restore state
+        uses: actions/cache@v5
+        with:
+          path: /home/runner/profusion_scrap/state.json
+          key: stock-state-v2
+      - name: Run monitor
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          PRODUCT_URLS: ${{ inputs.product_urls || secrets.PRODUCT_URLS }}
+          ALERT_SKUS: ${{ inputs.alert_skus || secrets.ALERT_SKUS }}
+          DEBUG_FORCE_IN_STOCK: ${{ inputs.force_in_stock }}
+          STATE_PATH: /home/runner/profusion_scrap/state.json
+          JITTER_SECONDS: ${{ github.event_name == 'workflow_dispatch' && '0' || '600' }}
+        run: python scraper.py
